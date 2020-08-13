@@ -36,12 +36,8 @@
 #![allow(dead_code)]
 
 use crc::{extract_crc, push_crc, valid_checksum};
-use rand::prelude::*;
-use signatory::ed25519;
-use signatory::ed25519::PublicKey;
-use signatory::public_key::PublicKeyed;
-use signatory::signature::{Signer, Verifier};
-use signatory_dalek::{Ed25519Signer, Ed25519Verifier};
+use ed25519_dalek::{PublicKey, SecretKey as Seed};
+use ed25519::signature::{Signer, Verifier};
 use std::fmt;
 use std::fmt::Debug;
 
@@ -74,7 +70,7 @@ type Result<T> = std::result::Result<T, crate::error::Error>;
 pub struct KeyPair {
     kp_type: KeyPairType,
     rawkey_kind: RawKeyKind,
-    pk: ed25519::PublicKey,
+    pk: PublicKey,
 }
 
 impl Debug for KeyPair {
@@ -89,7 +85,7 @@ impl Debug for KeyPair {
 
 #[derive(Clone)]
 enum RawKeyKind {
-    Seed(ed25519::Seed),
+    Seed(Vec<u8>),
     Public,
 }
 
@@ -153,7 +149,7 @@ impl KeyPair {
         KeyPair {
             kp_type,
             pk: pk_from_seed(&s),
-            rawkey_kind: RawKeyKind::Seed(s),
+            rawkey_kind: RawKeyKind::Seed(s.to_bytes().to_vec()),
         }
     }
 
@@ -202,9 +198,8 @@ impl KeyPair {
     /// Attempts to sign the given input with the key pair's seed
     pub fn sign(&self, input: &[u8]) -> Result<Vec<u8>> {
         if let RawKeyKind::Seed(ref seed) = self.rawkey_kind {
-            let signer = Ed25519Signer::from(seed);
-            //let sig = signatory::ed25519::sign(&signer, input)?;
-            let sig = signer.sign(input);
+            let signer = Seed::from_bytes(&seed)?;
+            let sig = ed25519_dalek::Keypair{ public: (&signer).into(), secret: signer }.sign(input);
             Ok(sig.to_bytes().to_vec())
         } else {
             Err(err!(SignatureError, "Cannot sign without a seed key"))
@@ -213,12 +208,11 @@ impl KeyPair {
 
     /// Attempts to verify that the given signature is valid for the given input
     pub fn verify(&self, input: &[u8], sig: &[u8]) -> Result<()> {
-        let verifier = Ed25519Verifier::from(&self.pk);
-        let mut fixedsig = [0; ed25519::SIGNATURE_SIZE];
+        let mut fixedsig = [0; ed25519::SIGNATURE_LENGTH];
         fixedsig.copy_from_slice(sig);
         let insig = ed25519::Signature::new(fixedsig);
 
-        match verifier.verify(input, &insig) {
+        match self.pk.verify(input, &insig) {
             Ok(()) => Ok(()),
             Err(e) => Err(e.into()),
         }
@@ -236,7 +230,7 @@ impl KeyPair {
 
             raw.push(b1);
             raw.push(b2);
-            raw.extend(seed.as_secret_slice().iter());
+            raw.extend(seed.as_slice().iter());
             push_crc(&mut raw);
 
             Ok(data_encoding::BASE32_NOPAD.encode(&raw[..]))
@@ -259,13 +253,13 @@ impl KeyPair {
             ))
         } else {
             raw.remove(0);
-            match PublicKey::from_bytes(raw) {
-                Some(pk) => Ok(KeyPair {
+            match PublicKey::from_bytes(&raw) {
+                Ok(pk) => Ok(KeyPair {
                     kp_type: KeyPairType::from(prefix),
                     pk,
                     rawkey_kind: RawKeyKind::Public,
                 }),
-                None => Err(err!(VerifyError, "Could not read public key")),
+                Err(e) => Err(err!(VerifyError, &format!["Could not read public key with error: {}", e])),
             }
         }
     }
@@ -293,20 +287,19 @@ impl KeyPair {
             let kp_type = KeyPairType::from(b2);
             let mut seed_bytes = [0u8; 32];
             seed_bytes.copy_from_slice(&raw[2..]);
-            let seed = ed25519::Seed::new(seed_bytes);
+            let seed = Seed::from_bytes(&seed_bytes)?;
 
             Ok(KeyPair {
                 kp_type,
                 pk: pk_from_seed(&seed),
-                rawkey_kind: RawKeyKind::Seed(seed),
+                rawkey_kind: RawKeyKind::Seed(seed_bytes.to_vec()),
             })
         }
     }
 }
 
-fn pk_from_seed(seed: &ed25519::Seed) -> PublicKey {
-    let signer = Ed25519Signer::from(seed);
-    signer.public_key().unwrap()
+fn pk_from_seed(seed: &Seed) -> PublicKey {
+    seed.into()
 }
 
 fn decode_raw(raw: &[u8]) -> Result<Vec<u8>> {
@@ -321,11 +314,10 @@ fn decode_raw(raw: &[u8]) -> Result<Vec<u8>> {
     }
 }
 
-fn create_seed() -> ed25519::Seed {
-    let mut rng = rand::thread_rng();
-    let rnd_bytes = rng.gen::<[u8; 32]>();
-
-    ed25519::Seed::new(rnd_bytes)
+fn create_seed() -> Seed {
+    use rand::rngs::OsRng;
+    let mut csprng = OsRng{};
+    Seed::generate(&mut csprng)
 }
 
 fn get_prefix_byte(kp_type: &KeyPairType) -> u8 {

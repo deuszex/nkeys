@@ -1,6 +1,6 @@
 [package]
 name = "nkeys"
-version = "0.0.9"
+version = "0.0.10"
 authors = ["Kevin Hoffman <alothien@gmail.com>"]
 edition = "2018"
 description = "Rust implementation of the NATS nkeys library"
@@ -23,9 +23,8 @@ name = "nk"
 required-features = ["cli"]
 
 [dependencies]
-signatory = "0.18.1"
-signatory-dalek = "0.18.1"
-ed25519-dalek = { version = "1.0.0-pre.2", features = ["std"] }
+ed25519 = "1.0.1"
+ed25519-dalek = { version = "1.0.0-pre.4", features = ["std"] }
 
 rand = "0.7.3"
 byteorder = "1.3.4"

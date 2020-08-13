@@ -8,7 +8,6 @@
 #![allow(unused_macros)]
 
 use core::fmt;
-use signatory::signature;
 
 use std::{
     error::Error as StdError,
@@ -95,8 +94,8 @@ impl Error {
 }
 
 /// Creates an nkeys error derived from an error that came from the `signatory` crate
-impl From<signature::Error> for Error {
-    fn from(source: signature::Error) -> Error {
+impl From<ed25519_dalek::SignatureError> for Error {
+    fn from(source: ed25519_dalek::SignatureError) -> Error {
         err!(SignatureError, &format!("Signature error: {}", source))
     }
 }

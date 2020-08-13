@@ -23,3 +23,7 @@ The following is a list of available prefixes and their keypair types:
 * **P** - Private Key
 
 For seeds, the first encoded prefix is **S**, and the second character will be the type for the public key, e.g. `SU` is a seed for a user key pair, `SA` is a seed for an account key pair.
+
+# Disclaimer
+
+This is a fork of [nkeys](https://github.com/wascc/nkeys). Signatory was removed as their Signatory-dalek is now deprecated. Also changed ed25519-dalek version to 1.0.0-pre.4.
